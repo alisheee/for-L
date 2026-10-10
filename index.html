@@ -54,7 +54,7 @@ mark{border-radius:3px;padding:0 1px}
 .parts li.m{background:var(--hl);border-color:transparent}
 .hide .parts{display:none}.hide .card.open .parts{display:grid}
 .empty{text-align:center;color:var(--mut);padding:70px 0;display:none}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:20;display:none;align-items:center;justify-content:center;padding:16px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:40;display:none;align-items:center;justify-content:center;padding:16px}
 .modal.show{display:flex}
 .sheet{background:var(--card);border-radius:20px;max-width:560px;width:100%;max-height:92vh;overflow:auto;position:relative}
 .sheet .ph{aspect-ratio:4/3}
@@ -72,6 +72,7 @@ mark{border-radius:3px;padding:0 1px}
 .bo.sel{border-color:var(--acc);background:var(--accsoft)}
 .bo.ok{border-color:#2e9e5b;background:rgba(46,158,91,.2)}.bo.bad{border-color:#d64545;background:rgba(214,69,69,.2)}.bo.miss{border-style:dashed;border-color:#2e9e5b}
 .pics.locked,.bos.locked{pointer-events:none}
+.fb[data-open]{cursor:pointer}.ig[data-open]{cursor:pointer;border-color:var(--acc)}.hint{display:block;opacity:.6;margin-top:3px}
 .bos+.nx{margin-top:20px}.nx:disabled{opacity:.35;cursor:default}
 @media(hover:none){.card:hover{transform:none;box-shadow:none}.btn:hover,.chip:hover{border-color:var(--line)}.chip.on:hover{border-color:var(--acc)}}
 @media(max-width:640px){
@@ -208,6 +209,14 @@ function opts(d,t){
   for(const x of pool){if(out.length>=4)break;if(seen.has(key(x)))continue;seen.add(key(x));out.push(x)}
   return shuf(out);
 }
+const ST_KEY='soya-stats-v1';let ST={};try{ST=JSON.parse(localStorage.getItem(ST_KEY)||'{}')}catch(e){}
+function stSave(){try{localStorage.setItem(ST_KEY,JSON.stringify(ST))}catch(e){}}
+function mark(d,ok){const s=ST[d.idx]||(ST[d.idx]={ok:0,bad:0,streak:0});if(ok){s.ok++;s.streak++}else{s.bad++;s.streak=0}stSave()}
+const weak=d=>{const s=ST[d.idx];return !!s&&s.bad>0&&s.streak<2};
+const learned=d=>{const s=ST[d.idx];return !!s&&s.ok>0&&!weak(d)};
+function pool(){return DATA.filter(d=>S.sec==='__weak'?weak(d):S.sec==='__ok'?learned(d):(S.sec==='Всі'||d.sec===S.sec))}
+function prog(){const W=DATA.filter(weak),L=DATA.filter(learned);if(!W.length&&!L.length)return '';
+  return `<div class="qg">Мій прогрес · вивчено ${L.length} з ${DATA.length}</div>`+(W.length?`<div class="qg" style="margin-top:14px">⚠️ Складні — натисни, щоб переглянути</div><div class="qchips">${W.map(d=>`<span class="ig" data-open="${d.idx}">${esc(d.name)}</span>`).join('')}</div>`:'')+`<button class="nx sec" data-a="reset">Скинути прогрес</button>`}
 function bopts(d){return shuf([...d.ings,...shuf(ALLI.filter(x=>!d.ings.includes(x))).slice(0,Math.max(5,12-d.ings.length))])}
 function checkBuild(){
   const q=Q.qs[Q.i],d=q.d;
@@ -222,9 +231,9 @@ function setup(){
   qz.innerHTML=`<div class="qin"><div class="qtop"><button class="x2" data-a="close">×</button></div>
   <div class="qh">🧪 Тест по меню</div><div class="qask">Обери формат і починай</div>
   <div class="qg">Тип питань</div><div class="qchips">${Object.entries(QT).map(([k,l])=>c('type',k,l)).join('')}</div>
-  <div class="qg">Розділ</div><div class="qchips">${TABS.map(t=>c('sec',t,t)).join('')}</div>
+  <div class="qg">Розділ</div><div class="qchips">${TABS.map(t=>c('sec',t,t)).join('')}${c('sec','__weak','⚠️ Складні ('+DATA.filter(weak).length+')')}${c('sec','__ok','✅ Вивчені ('+DATA.filter(learned).length+')')}</div>
   <div class="qg">Кількість питань</div><div class="qchips">${[10,20,0].map(n=>c('n',n,n||'Всі')).join('')}</div>
-  <button class="nx" data-a="start">Почати</button></div>`;
+  <button class="nx" data-a="start">Почати</button>${prog()}</div>`;
   qz.scrollTop=0;
 }
 function start(items){
@@ -243,32 +252,34 @@ function ask(){
 }
 function answer(k,okIn){
   const q=Q.qs[Q.i],d=q.d,ok=okIn!==undefined?okIn:q.o[k]===d;Q.ans=k;
-  if(ok)Q.score++;else Q.wrong.push(d);
+  if(ok)Q.score++;else Q.wrong.push(d);mark(d,ok);
   qz.querySelectorAll('.opt,.pic').forEach((b,i)=>b.classList.add(q.o[i]===d?'ok':i===k?'bad':'dim'));
   qz.querySelector('.opts,.pics,.bos').classList.add('locked');
   const last=Q.i+1>=Q.qs.length;
-  qz.querySelector('.qin').insertAdjacentHTML('beforeend',`<div class="fb ${ok?'ok':'bad'}"><img src="${d.img}" alt=""><div><span class="v">${ok?'✓ Правильно':'✗ Неправильно'}</span><b>${esc(d.name)}</b><small>${esc(desc(d))}</small></div></div><button class="nx" data-a="next">${last?'Результат':'Далі →'}</button>`);
+  qz.querySelector('.qin').insertAdjacentHTML('beforeend',`<div class="fb ${ok?'ok':'bad'}" data-open="${d.idx}"><img src="${d.img}" alt=""><div><span class="v">${ok?'✓ Правильно':'✗ Неправильно'}</span><b>${esc(d.name)}</b><small>${esc(desc(d))}</small><small class="hint">🔍 Натисни, щоб збільшити фото</small></div></div><button class="nx" data-a="next">${last?'Результат':'Далі →'}</button>`);
   qz.querySelector('.nx').scrollIntoView({block:'nearest',behavior:'smooth'});
 }
 function finish(){
   const t=Q.qs.length,p=Math.round(Q.score/t*100);
   const msg=p===100?'Ідеально! 🏆':p>=80?'Дуже добре 👍':p>=50?'Непогано, ще потренуйся':'Треба повторити меню 📚';
   qz.innerHTML=`<div class="qin"><div class="qtop"><button class="x2" data-a="close">×</button></div><div class="big">${Q.score}/${t}</div><div class="qask">${p}% · ${msg}</div>
-  ${Q.wrong.length?`<div class="qg">Помилки (${Q.wrong.length})</div>`+Q.wrong.map(d=>`<div class="fb bad"><img src="${d.img}" alt=""><div><b>${esc(d.name)}</b><small>${esc(desc(d))}</small></div></div>`).join('')+`<button class="nx" data-a="retry">Повторити помилки</button>`:''}
+  ${Q.wrong.length?`<div class="qg">Помилки (${Q.wrong.length})</div>`+Q.wrong.map(d=>`<div class="fb bad" data-open="${d.idx}"><img src="${d.img}" alt=""><div><b>${esc(d.name)}</b><small>${esc(desc(d))}</small></div></div>`).join('')+`<button class="nx" data-a="retry">Повторити помилки</button>`:''}
   <button class="nx sec" data-a="again">Новий тест</button></div>`;
   qz.scrollTop=0;
 }
 function qclose(){qz.classList.remove('show');document.body.style.overflow=''}
 qz.addEventListener('click',e=>{
+  const op=e.target.closest('[data-open]');if(op){open_(op.dataset.open);return}
   const g=e.target.closest('[data-g]');
   if(g){S[g.dataset.g]=g.dataset.g==='n'?+g.dataset.v:g.dataset.v;setup();return}
   const a=e.target.closest('[data-a]');
   if(a){const k=a.dataset.a;
     if(k==='close')qclose();
-    else if(k==='start'){let p=shuf(DATA.filter(d=>S.sec==='Всі'||d.sec===S.sec));if(S.n)p=p.slice(0,S.n);start(p)}
+    else if(k==='start'){let p=shuf(pool());if(!p.length){a.textContent='Тут поки порожньо — обери інший розділ';return}if(S.n)p=p.slice(0,S.n);start(p)}
     else if(k==='next'){Q.i++;Q.i<Q.qs.length?ask():finish()}
     else if(k==='again')setup();
     else if(k==='check')checkBuild();
+    else if(k==='reset'){if(a.dataset.sure){ST={};stSave();setup()}else{a.dataset.sure=1;a.textContent='Точно скинути? Натисни ще раз'}}
     else if(k==='retry'){const w=shuf(Q.wrong);start(w)}
     return}
   const o=e.target.closest('.opt,.pic');if(o&&Q&&Q.ans===null){answer(+o.dataset.k);return}
